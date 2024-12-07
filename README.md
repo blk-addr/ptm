@@ -37,7 +37,7 @@ export TF_VAR_pm_api_token_secret='<token-secret>'
 ```
 
 ### 4. Setup Terraform Configuration
-In your Terraform workspace, create or edit main.tf with the following content:
+In your Terraform workspace (within this repository, under `./environments/local/`), create or edit main.tf with the following content:
 ```hcl
 provider "proxmox" {
   pm_api_url      = "https://192.168.1.209:8006/api2/json"
@@ -83,11 +83,24 @@ For the IaC Host, you will want something like this as your snippet:
 apt:
   preserve_sources_list: true
   sources:
-    source1:
+    terraform:
       keyid: 798AEC654E5C15428C8E42EEAA16FCBCA621E701 # https://stackoverflow.com/a/72629066
       keyserver: https://apt.releases.hashicorp.com/gpg
       source: deb [signed-by=$KEY_FILE] https://apt.releases.hashicorp.com $RELEASE main
       append: true
+    rundeck:
+      keyid: 0DDD2FA79B15D736ECEA32B89B5206167C5C34C0
+      keyserver: https://keyserver.ubuntu.com
+      source: deb [signed-by=$KEY_FILE] https://packages.rundeck.com/pagerduty/rundeck/any/ any main
+      filename: rundeck.list
+      append: false # Rundeck instructions say to replace any existing entries
+    rundeck-src:
+      keyid: 0DDD2FA79B15D736ECEA32B89B5206167C5C34C0
+      keyserver: https://keyserver.ubuntu.com
+      source: deb-src [signed-by=$KEY_FILE] https://packages.rundeck.com/pagerduty/rundeck/any/ any main
+      filename: rundeck.list # Without this, `rundeck-src` creates a `rundeck-src.list` and install fails
+      append: true # Append to the file created above
+
 package_reboot_if_required: true
 package_update: true
 package_upgrade: true
@@ -97,12 +110,21 @@ packages:
     - software-properties-common
     - qemu-guest-agent
     - terraform
+    - openjdk-11-jre-headless # For rundeck
+    - rundeck
     - nfs-common
 ansible:
   package_name: ansible-core
   install_method: distro # pip option appears broken https://github.com/canonical/cloud-init/issues/5720
 runcmd:
   - systemctl enable qemu-guest-agent # Fails to start manually; interwebs say to manually STOP the VM completely, wait, then start the VM
+  - systemctl enable rundeckd # Does not seem to be enabled by default
+  # Generate SSH key for the iac user. This will be used by the iac-host when connecting to other hosts.
+  - mkdir -p /home/iac/.ssh
+  - chown iac:iac /home/iac/.ssh
+  - chmod 700 /home/iac/.ssh
+  - su -c "ssh-keygen -t ed25519 -b 4096 -N '' -f /home/iac/.ssh/id_ed25519" - iac
+
 mounts:
   - ["192.168.1.130:/mnt/vol_01/iac", "/mnt/iac/", "nfs4", "rw,x-systemd.automount", "0", "0"]
 power_state:
@@ -111,6 +133,7 @@ power_state:
   message: Cloud-init complete, rebooting machine
   condition: true
 ```
+
 
 Ensure a default user snippet is available on the Proxmox server
 ```bash

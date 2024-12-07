@@ -24,7 +24,7 @@ variable "cpu_cores" {
 variable "memory" {
   description = "Memory in MB"
   type        = number
-  default     = 1024
+  default     = 4096
 }
 
 variable "disk_size" {
